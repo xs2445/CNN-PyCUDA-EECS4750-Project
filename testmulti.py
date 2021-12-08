@@ -181,6 +181,6 @@ if __name__ == "__main__":
     print("python test = \n",P_py)
     print("P_shared = \n",P_shared)
 
-    print("t_naive=\n", t2-t1)
-    print("t_shared=\n",t3-t2)
-    print("t_py=\n",t4-t3)
+    print("t_naive=\n", t_naive)
+    print("t_shared=\n",t_shared)
+    print("t_py=\n",t_py)
