@@ -64,7 +64,7 @@ class multi:
             int col = tx + bx*blocksize;
             
             // int strideM = ceil(Mh/blocksize);
-            int strideM = Mw/blocksize +1;
+            int strideM = Mw/blocksize+1;
             
             float temp = 0.0f;
             for(int i=0; i<strideM;i++){
@@ -113,10 +113,9 @@ class multi:
         cuda.memcpy_htod(dM, M)  # copy input array from host to device
         cuda.memcpy_htod(dN, N)
 
-
         # kernel call
-        griddimx = self.getgriddim(M_h, block)
-        griddimy = self.getgriddim(N_w, block)
+        griddimx = self.getgriddim(N_w, block)
+        griddimy = self.getgriddim(M_h, block)
         func(dM, dN, M_w, M_h, N_w, dP, block=blocksize, grid=(griddimx, griddimy, 1))
         cuda.memcpy_dtoh(P, dP)
         end.record()
@@ -137,8 +136,8 @@ class multi:
         cuda.memcpy_htod(dN, N)
 
         # kernel call
-        griddimx = self.getgriddim(M_h, block)
-        griddimy = self.getgriddim(N_w, block)
+        griddimx = self.getgriddim(N_w, block)
+        griddimy = self.getgriddim(M_h, block)
         func(dM, dN, M_w, M_h, N_w, dP, block=blocksize, grid=(griddimx, griddimy, 1))
         cuda.memcpy_dtoh(P, dP)
         end.record()
@@ -147,10 +146,10 @@ class multi:
 
 
 def pytest(a, b):
-    start = time.time()
+    start = time.perf_counter()
     c = np.dot(a, b)
-    end = time.time()
-    return c, (end-start)*1e3
+    end = time.perf_counter()
+    return c, (end - start) * 1e3
 
 
 block = 32
@@ -158,29 +157,43 @@ blocksize = (block, block, 1)
 
 if __name__ == "__main__":
     cuda_model = multi()
+    t_naive_list = []
+    t_shared_list = []
+    t_py_list = []
+    size = [1024, 2048, 4096]
 
-    M_h = 2048/2
-    M_w = 2048/2
-    N_w = 2048/2
-    M_h = np.int32(M_h)
-    M_w = np.int32(M_w)
-    N_w = np.int32(N_w)
+    for i in size:
+        M_h = i
+        M_w = i * 3
+        N_w = i * 8
+        M_h = np.int32(M_h)
+        M_w = np.int32(M_w)
+        N_w = np.int32(N_w)
 
-    M = np.random.randint(1, 5, (M_h, M_w)).astype(np.float32)
-    N = np.random.randint(1, 5, (M_w, N_w)).astype(np.float32)
-    P_naive,t_naive = cuda_model.multi_naive(M,N,M_w,M_h,N_w)
-    P_shared,t_shared = cuda_model.multi_tile(M,N,M_w,M_h,N_w)
-    P_py,t_py = pytest(M, N)
-    try:
-        # print("Checkpoint: Do python and gpu convolution match? Checking...")
-        assert ((P_shared == P_py).all())
-        print("match, result:")
-    except AssertionError:
-        print("conv results do not match ")
-
-    print("python test = \n",P_py)
-    print("P_shared = \n",P_shared)
-
-    print("t_naive=\n", t_naive)
-    print("t_shared=\n",t_shared)
-    print("t_py=\n",t_py)
+        M = np.random.randint(1, 5, (M_h, M_w)).astype(np.float32)
+        N = np.random.randint(1, 5, (M_w, N_w)).astype(np.float32)
+        P_naive, t_naive = cuda_model.multi_naive(M, N, M_w, M_h, N_w)
+        P_shared, t_shared = cuda_model.multi_tile(M, N, M_w, M_h, N_w)
+        P_py, t_py = pytest(M, N)
+        try:
+            # print("Checkpoint: Do python and gpu convolution match? Checking...")
+            assert ((P_shared == P_py).all())
+            print("match, result:")
+        except AssertionError:
+            print("conv results do not match ")
+        t_naive_list.append(t_naive)
+        t_shared_list.append(t_shared)
+        t_py_list.append(t_py)
+        print("t_naive=\n", t_naive)
+        print("t_shared=\n", t_shared)
+        print("t_py=\n", t_py)
+    fig1 = plt.figure()
+    plt.title("PyCUDA multiplication")
+    plt.xlabel('size of array')
+    plt.ylabel('average execution time/ms')
+    plt.plot(size, t_naive_list, 'b', label="naive ")
+    plt.plot(size, t_shared_list, 'g', label="shared memory")
+    plt.plot(size, t_py_list, 'r', label="numpy.dot")
+    plt.legend()
+    plt.show()
+    fig1.savefig('pycuda_conv.png')
