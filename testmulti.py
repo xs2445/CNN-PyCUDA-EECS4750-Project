@@ -29,15 +29,16 @@ class multi:
             int col = threadIdx.x + blockIdx.x*blockDim.x;
             
             if ((row<M_h)&&(col<N_w)){
-            float temp = 0.0f;
+                float temp = 0.0f;
             
-            for(int i=0; i<M_w;i++){
-                temp += M[i+row*M_w]*N[col+i*N_w];
+                for(int i=0; i<M_w;i++){
+                    temp += M[i+row*M_w]*N[col+i*N_w];
+                }
+            
+                P[row*M_w+col] += temp;
             }
-            
-            P[row*M_w+col] += temp;
         }
-        }
+        
         
         """
         return SourceModule(kernelwrapper)
@@ -86,9 +87,9 @@ blocksize = (block, block, 1)
 if __name__ == "__main__":
     cuda_model = multi()
 
-    M_h = 1024
-    M_w = 1024
-    N_w = 1024
+    M_h = 4096
+    M_w = 4096
+    N_w = 4096
     M_h = np.int32(M_h)
     M_w = np.int32(M_w)
     N_w = np.int32(N_w)
