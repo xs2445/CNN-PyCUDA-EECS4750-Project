@@ -19,21 +19,16 @@ class pooling:
 
     def getSourceModule(self):
         kernelwrapper = """
-        #include <stdio.h>
         __global__ void pool_ave_naive(float* M, float* P, 
                                        const int wM, const int hM,
-                                       const int stride, const int window){
-          // window has the same width and height
+                                       const int stride, const int window,
+                                       const int wP, const int hP){
+          // window must have the same width and height
 
             int tx = threadIdx.x;
             int ty = threadIdx.y;
-            int bx = blockIdx.x;
-            int by = blockIdx.y;
-            int idx = tx+blockIdx.x+blockDim.x;
-            int idy = ty+blockIdx.y+blockDim.y;
-            
-            int wP = (wM-window)/stride+1;
-            int hP = (hM-window)/stride+1;
+            int idx = tx+blockIdx.x*blockDim.x;
+            int idy = ty+blockIdx.y*blockDim.y;
             
             float temp = 0.0f;
             
@@ -44,10 +39,9 @@ class pooling:
             }
             __syncthreads();
             
-            printf("%f",temp);
-            //temp = temp/(window^2); // get mean
+            temp = temp/(window*window); // get mean
             if(idx<wP && idy<hP){
-                P[idy*wP+idx] = temp;
+                P[(idy)*wP+idx] = temp;
             }
         }   
         """
@@ -62,8 +56,8 @@ class pooling:
         hM = np.int32(hM)
         wM = np.int32(wM)
 
-        hP = self.getgriddim(hM - window, stride)
-        wP = self.getgriddim(wM - window, stride)
+        hP = np.int32(self.getgriddim(hM - window, stride))
+        wP = np.int32(self.getgriddim(wM - window, stride))
         P = np.zeros(shape=(hP, wP)).astype(np.float32)
         print("P.shape",P.shape)
         dM = cuda.mem_alloc_like(M)
@@ -71,9 +65,9 @@ class pooling:
 
         cuda.memcpy_htod(dM, M)
         block = (blocksize, blocksize, 1)
-        grid = (self.getgriddim(hM - window, blocksize), self.getgriddim(hM - window, blocksize), 1)
+        grid = (self.getgriddim(hP-1, blocksize), self.getgriddim(wP-1, blocksize), 1)
         print("grid=",grid)
-        func(dM, dP, wM, hM, stride, window, block=block, grid=grid)
+        func(dM, dP, wM, hM, stride, window,wP,hP,block=block, grid=grid)
         cuda.memcpy_dtoh(P, dP)
         end.record()
         end.synchronize()
@@ -87,7 +81,6 @@ class pooling:
         P = np.zeros(shape=(hP, wP))
 
         for i in range(hP):
-            print("\n")
             for j in range(wP):
                 # print("i=", i)
                 # print("j=", j)
@@ -100,11 +93,11 @@ class pooling:
 
 if __name__ == "__main__":
     cuda_model = pooling()
-    blocksize = 32
-    wM = 4
-    hM = 4
+    blocksize = 1
+    wM = 8
+    hM = 8
     stride = np.int32(2)
-    window_size = np.int32(3)
+    window_size = np.int32(2)
     # 3 channel matrix
     # do not consider batch yet
     M_1 = np.random.randint(1, 3, (hM, wM)).astype(np.float32)
@@ -116,4 +109,5 @@ if __name__ == "__main__":
     P_naive, t_naive = cuda_model.ave_naive(M_1, stride, window_size)
 
     print(M_1)
+    print(P_py)
     print(P_naive)
