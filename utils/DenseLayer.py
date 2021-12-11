@@ -31,10 +31,11 @@ class Dense(object):
 
         # output shape
         self.size_out = size_out
+        self.params = []
         # initialize the weight with size (length_in, size_out)
-        self.w = np.random.rand(self.length_in, self.size_out).astype(dtype)
+        self.params.append(np.random.rand(self.length_in, self.size_out).astype(dtype))
         # initialize the bias with size (size_out)
-        self.b = np.random.rand(self.size_out).astype(dtype)
+        self.params.append(np.random.rand(self.size_out).astype(dtype))
         # cache the input matrix
         self.x = None
 
