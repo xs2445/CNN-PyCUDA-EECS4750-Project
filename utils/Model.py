@@ -52,8 +52,13 @@ class Sequential():
         for key in self.name_layers:
             digits = self.layers[key].forward(digits)
 
-        # loss = (y-digits)**2/batch
+        # y_onehot = np.eye(10)[y]
+        # loss = (digits-y_onehot)**2/batch
+        # dx = np.abs(digits-y_onehot)
+        # print(loss)
         loss, dx = softmax_loss(digits, y)
+        # print("loss:", loss)
+        
         # print("dx",dx.shape)
 
         # backward
@@ -82,7 +87,7 @@ class Sequential():
         for key in self.name_layers:
             digits = self.layers[key].forward(digits)
 
-        digits = softmax(digits)
+        # digits = softmax(digits)
         predictions = np.argmax(digits, axis=1)
 
         return predictions

@@ -45,7 +45,7 @@ class Optimizer(object):
                     loss_hist.append(loss)
                     if verbose:
                         print('{}/{} loss: {}'.format(batch_size * (i + 1), num_train, loss))
-                    loss = 0.0
+                    # loss = 0.0
 
             # Validation stage
             train_acc = model.check_accuracy(X_train, y_train)
@@ -138,9 +138,11 @@ class my_SGD(Optimizer):
             # if this layer have trainable parameters
             # print(key_layer)
             if model.layers[key_layer].params:
-                
-                layer = model.layers[key_layer]
+                params = model.layers[key_layer].params
+                grads = model.layers[key_layer].grads
                 # back propagation
-                for k in layer.params:
+                for k in params:
                     # print(k)
-                    layer.params[k] -= learning_rate * layer.grads[k]
+                    params[k] -= learning_rate * grads[k]
+                # model.layers[key_layer].params = params
+                # model.layers[key_layer].grads = grads

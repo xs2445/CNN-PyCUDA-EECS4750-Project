@@ -35,11 +35,13 @@ class Dense(object):
         self.params = dict()
 
         # initialize the weight with size (length_in, size_out)
-        self.params["weight"] = np.random.rand(self.length_in, self.size_out).astype(dtype)
+        self.params["weight"] = 1e-2*np.random.rand(self.length_in, self.size_out).astype(dtype)
         # self.params.append(np.random.rand(self.length_in, self.size_out).astype(dtype))
         
         # initialize the bias with size (size_out)
-        self.params["bias"]= np.random.rand(self.size_out).astype(dtype)
+        self.params["bias"]= np.zeros(self.size_out).astype(dtype)
+        # self.params["bias"]= np.random.rand(self.size_out).astype(dtype)
+
         # self.params.append(np.random.rand(self.size_out).astype(dtype))
 
         # initialize the grad
