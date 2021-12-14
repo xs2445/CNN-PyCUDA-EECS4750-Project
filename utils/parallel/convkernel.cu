@@ -1,64 +1,10 @@
 #include <stdio.h>
 
-
-/*********************************************************************/
-// 
-
-__global__ 
-void convLayer_forward_naive0(float *X, float *Masks, float *Y, int C, int M, int H, int W, int K){
-    /*
-    Naive parallel convolution without using shared or constant memory,
-    the number and shape of threads blocks equals the shape of output matrix
-
-    Properties:
-    convolution layer:
-    mode = valid
-    stride = 1
-    mask_width = K
-
-    Args:
-    - X: input matrix with size [C, H, W]
-    - Masks: masks with size [M, C, K, K]
-    - Y: output matrix with size [M, H-K+1, W-K+1]
-    - C: number of channels of input matrix
-    - M: number of channels of output matrix
-    - H: height of input matrix
-    - W: width of input matrix
-    - K: width of masks 
-    */
-
-    // current position of the thread
-    const int col = blockDim.x * blockIdx.x + threadIdx.x;
-    const int row = blockDim.y * blockIdx.y + threadIdx.y;
-
-    // specify some temporary args
-    int m, c, h, w, p, q = 0;
-    // the shape of output matrix
-    const int H_out = H-K+1;
-    const int W_out = W-K+1;
-
-    // for each channel of output matrix Y
-    for(m=0; m<M; m++){
-        // for each element of output matrix Y
-        h = row;
-        w = col;
-
-        // do convolution of submatrix and assign to Y[m,h,w]
-        Y[m*H_out*W_out + h*W_out + w] = 0;
-        // sum the result of each channel of input matrix
-        for(c=0; c<C; c++)
-            // in place product of X and Masks
-            for(p=0; p<K; p++)
-                for(q=0; q<K; q++)
-                    // result += X[c,h+q,w+q] * Masks[m,c,p,q]
-                    Y[m*H_out*W_out + h*W_out + w] += X[c*H*W + h*W + w] *Masks[m*C*K*K + c*K*K + p*K + q];
-
-    }
-}
-
-/*********************************************************************/
+//Some pre-defined arguments
+#define TILE_WIDTH 16
 
 
+// functions for global id calculating
 /**
  * @brief calculate the global id of coordinate (n1,n2,n3) in linearized 3-dimensional 
  * matrix based on row-major layout
@@ -72,7 +18,6 @@ void convLayer_forward_naive0(float *X, float *Masks, float *Y, int C, int M, in
 __device__ int global_id_3d(int n1, int n2, int n3, int N2, int N3){
     return n3 + N3*(n2 + N2*n1);
 }
-
 
 /**
  * @brief calculate the global id of coordinate (n1,n2,n3,n4) in linearized 4-dimensional 
@@ -89,20 +34,6 @@ __device__ int global_id_3d(int n1, int n2, int n3, int N2, int N3){
 __device__ int global_id_4d(int n1, int n2, int n3, int n4, int N2, int N3, int N4){
     return n4 + N4*(n3 + N3*(n2 + N2*n1));
 }
-
-
-
-
-
-
-
-
-/*********************************************************************/
-
-//Some pre-defined arguments
-#define TILE_WIDTH 16
-
-/*********************************************************************/
 
 
 /**
