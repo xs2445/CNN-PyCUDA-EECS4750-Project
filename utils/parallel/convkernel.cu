@@ -73,7 +73,7 @@ __global__ void convLayer_forward_naive(
     const int w = blockIdx.z % TILE_WIDTH + threadIdx.x;
 
     float acc = 0;
-    // for each input chennel
+    // for each input channel
     for(c=0; c<C; c++)
         // convolution
         for(p=0; p<K; p++)          // y-direction
@@ -83,5 +83,56 @@ __global__ void convLayer_forward_naive(
                 acc += X[gid_x] * Masks[gid_m];
             }
     int gid_y = global_id_4d(n, m, h, w, M, h_y, w_y);
+    Y[gid_y] = acc;
+}
+
+
+/**
+ * @brief Naive parallel convolution layer without using shared or constant memory. 
+ * mode = valid, stride = 1, mask_width = K.
+ * @param X input matrix with size [N, H, W, C]
+ * @param Masks masks with size [K, K, C, M]
+ * @param Y output matrix with size [N, H-K+1, W-K+1, M]
+ * @param N number of samples 
+ * @param C number of channels of input matrix
+ * @param M number of channels of output matrix
+ * @param H height of input matrix
+ * @param W width of input matrix
+ * @param K width of masks 
+ * @return Convolution result filled in Y
+**/
+__global__ void convLayer_forward_naive_channel(
+    float *X, 
+    float *Masks, 
+    float *Y, 
+    int N, 
+    int C, 
+    int M, 
+    int H, 
+    int W, 
+    int K){
+
+    // output shape of Y
+    const int h_y = H-K+1;
+    const int w_y = W-K+1; 
+
+    // initialize some parameters
+    int c, p, q;
+    const int n = blockIdx.x;
+    const int m = blockIdx.y;
+    const int h = blockIdx.z / TILE_WIDTH + threadIdx.y;
+    const int w = blockIdx.z % TILE_WIDTH + threadIdx.x;
+
+    float acc = 0;
+    // for each input channel
+    for(c=0; c<C; c++)
+        // convolution
+        for(p=0; p<K; p++)          // y-direction
+            for(q=0; q<K; q++){      // x-direction
+                int gid_x = global_id_4d(n, h+p, w+q, c, H, W, C);
+                int gid_m = global_id_4d(p, q, c, m, K, C, M);
+                acc += X[gid_x] * Masks[gid_m];
+            }
+    int gid_y = global_id_4d(n, h, w, m, h_y, w_y, M);
     Y[gid_y] = acc;
 }
