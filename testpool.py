@@ -93,21 +93,25 @@ class pooling:
 
 if __name__ == "__main__":
     cuda_model = pooling()
-    blocksize = 1
-    wM = 8
-    hM = 8
+    blocksize = 16
+    # wM = 8
+    # hM = 8
+
+    size = [16,128,512,1024,2048]
     stride = np.int32(2)
     window_size = np.int32(2)
     # 3 channel matrix
     # do not consider batch yet
-    M_1 = np.random.randint(1, 3, (hM, wM)).astype(np.float32)
-    M_2 = np.random.randint(1, 3, (hM, wM)).astype(np.float32)
-    M_3 = np.random.randint(1, 3, (hM, wM)).astype(np.float32)
+    for i in size:
 
-    # print(M_1)
-    P_py, t_py = cuda_model.pooling_py(M_1, stride, window_size)
-    P_naive, t_naive = cuda_model.ave_naive(M_1, stride, window_size)
+        M_1 = np.random.randint(1, 3, (size, size)).astype(np.float32)
+        M_2 = np.random.randint(1, 3, (size, size)).astype(np.float32)
+        M_3 = np.random.randint(1, 3, (size, size)).astype(np.float32)
 
-    print(M_1)
-    print(P_py)
-    print(P_naive)
+        # print(M_1)
+        P_py, t_py = cuda_model.pooling_py(M_1, stride, window_size)
+        P_naive, t_naive = cuda_model.ave_naive(M_1, stride, window_size)
+
+        print(M_1)
+        print(P_py)
+        print(P_naive)
