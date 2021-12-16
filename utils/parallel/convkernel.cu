@@ -85,8 +85,10 @@ __global__ void convLayer_forward_naive(
     int c, p, q;
     const int n = blockIdx.x;
     const int m = blockIdx.y;
-    const int h = blockIdx.z / W_grid + threadIdx.y;
-    const int w = blockIdx.z % W_grid + threadIdx.x;
+    // const int h = blockIdx.z / W_grid + threadIdx.y;
+    // const int w = blockIdx.z % W_grid + threadIdx.x;
+    const int h = (blockIdx.z / W_grid)*blockDim.y + threadIdx.y;
+    const int w = (blockIdx.z % W_grid)*blockDim.x + threadIdx.x;
 
     float acc = 0;
     // for each input channel
@@ -183,15 +185,18 @@ __global__ void convLayer_forward_shared(
     const int W_grid){
 
     // the size to be tiled for X matrix
-    int X_tile_width = TILE_WIDTH + K - 1;
+    const int X_tile_width = TILE_WIDTH + K - 1;
     // allocate shared memory, shared memory size defined when invoking the kernel
-    extern __shared__ float shmem[];
+    // extern __shared__ float shmem[];
+    __shared__ float shmem[1321];
     // first part of shared memory is tile of X, 
     // X_tile has size X_tile_width*X_tile_width
     float *X_shared = &shmem[0];
     // second part of shared memory is part of the mask
     // has size K*K
-    float *Mask_shared = &shmem[X_tile_width*X_tile_width];
+    // float *Mask_shared = &shmem[X_tile_width*X_tile_width];
+    float *Mask_shared = &shmem[1296];
+    // Mask_shared[24] = 1;
 
     // output shape of Y
     const int h_y = H-K+1;
@@ -223,11 +228,13 @@ __global__ void convLayer_forward_shared(
         __syncthreads();
 
         // copy tiled X to the shared memory
-        for(i=h; i<(h_base+X_tile_width); i+=TILE_WIDTH)
-            for(j=w; j<(w_base+X_tile_width); j+=TILE_WIDTH)
-                X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_4d(n,c,h,w,C,H,W)];
+        for(i=h; i<(h_base + X_tile_width); i+=TILE_WIDTH)
+            for(j=w; j<(w_base + X_tile_width); j+=TILE_WIDTH)
+                if(i<H && j<W)
+                    X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_4d(n,c,i,j,C,H,W)];
         __syncthreads();
 
+        // convolution
         for(p=0; p<K; p++)
             for(q=0; q<K; q++)
                 acc += X_shared[h+p,w+q] * Mask_shared[p,q];
