@@ -15,7 +15,7 @@ class Dense(object):
         - size_out: the shape of the output [size_out]
         """
         # super().__init__(size_in=size_in, dtype=dtype)
-
+        self.layer_name = 'Dense'
         # input shape
         self.size_in = size_in
         # flattened length of the matrix
@@ -31,10 +31,22 @@ class Dense(object):
 
         # output shape
         self.size_out = size_out
+        # self.params = []
+        self.params = dict()
+
         # initialize the weight with size (length_in, size_out)
-        self.w = np.random.rand(self.length_in, self.size_out).astype(dtype)
+        self.params["weight"] = 1e-2*np.random.rand(self.length_in, self.size_out).astype(dtype)
+        # self.params.append(np.random.rand(self.length_in, self.size_out).astype(dtype))
+        
         # initialize the bias with size (size_out)
-        self.b = np.random.rand(self.size_out).astype(dtype)
+        self.params["bias"]= np.zeros(self.size_out).astype(dtype)
+        # self.params["bias"]= np.random.rand(self.size_out).astype(dtype)
+
+        # self.params.append(np.random.rand(self.size_out).astype(dtype))
+
+        # initialize the grad
+        self.grads= dict()
+
         # cache the input matrix
         self.x = None
 
@@ -60,8 +72,8 @@ class Dense(object):
 
         self.x = x.copy()
 
-        w = self.w
-        b = self.b
+        w = self.params["weight"]
+        b = self.params["bias"]
 
         batch = x.shape[0]
         # flatten the input matrix
@@ -86,8 +98,8 @@ class Dense(object):
         - db: Gradient with respect to b, of shape (M,)
         """
         x = self.x
-        w = self.w
-        b = self.b
+        w = self.params["weight"]
+        # b = self.b
 
         N = x.shape[0]
         x_flatten = x.reshape((N, -1))
@@ -96,7 +108,15 @@ class Dense(object):
         dw = np.dot(x_flatten.T, dout)
         db = np.dot(np.ones((N,)), dout)
 
-        return dx, dw, db
+        self.grads["weight"] = dw
+        self.grads["bias"] = db
+
+        return dx
+
+
+        
+
+
         
 
 
