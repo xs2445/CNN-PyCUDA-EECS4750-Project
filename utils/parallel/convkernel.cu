@@ -258,6 +258,94 @@ __global__ void convLayer_forward_shared(
 }
 
 
+/**
+ * @brief parallel convolution layer using shared memory. 
+ * mode = valid, stride = 1, mask_width = K.
+ * @param X input matrix with size [N, H, W, C]
+ * @param Masks masks with size [K, K, C, M]
+ * @param Y output matrix with size [N, H-K+1, W-K+1, M]
+ * @param N number of samples 
+ * @param C number of channels of input matrix
+ * @param M number of channels of output matrix
+ * @param H height of input matrix
+ * @param W width of input matrix
+ * @param K width of masks 
+ * @param W_grid the number of tiled matrix in width direction
+ * @return Convolution result filled in Y
+**/
+__global__ void convLayer_forward_shared_channel(
+    float *X, 
+    float *Masks, 
+    float *Y, 
+    const int N,
+    const int C, 
+    const int M, 
+    const int H, 
+    const int W, 
+    const int K,
+    const int W_grid){
+
+    // the size to be tiled for X matrix
+    const int X_tile_width = TILE_WIDTH + K - 1;
+    // allocate shared memory, shared memory size defined when invoking the kernel
+    extern __shared__ float shmem[];
+
+    // first part of shared memory is tile of X, 
+    // X_tile has size X_tile_width*X_tile_width
+    float *X_shared = &shmem[0];
+
+    // second part of shared memory is part of the mask
+    // has size K*K
+    float *Mask_shared = &shmem[X_tile_width*X_tile_width];
+
+    // output shape of Y
+    const int h_y = H-K+1;
+    const int w_y = W-K+1; 
+
+    // initialize some parameters
+    // int n, m, h0, w0, h_base, w_base, h, w;
+    const int n = blockIdx.x;
+    const int m = blockIdx.y;
+    const int h0 = threadIdx.x;
+    const int w0 = threadIdx.y;
+    const int h_base = (blockIdx.z / W_grid) * TILE_WIDTH;
+    const int w_base = (blockIdx.z % W_grid) * TILE_WIDTH;
+    const int h = h_base + h0;
+    const int w = w_base + w0;
+
+    float acc = 0;
+
+    int c, i, j, p, q;
+    // for each input channel
+    // update the shared memory in each iteration
+    for(c=0; c<C; c++){
+
+        // copy mask[m,c,:,:] to the shared memory
+        // here h0 = threadIdx.x, w0 = threadIdx.y
+        if((h0<K) && (w0<K))
+            // Mask_shared[global_id_2d(h0,w0,K)] = Masks[global_id_4d(m,c,h0,w0,C,K,K)];
+            Mask_shared[global_id_2d(h0,w0,K)] = Masks[global_id_4d(h0,w0,c,m,K,C,M)];
+        __syncthreads();
+
+        // copy tiled X to the shared memory
+        for(i=h; i<(h_base + X_tile_width); i+=TILE_WIDTH)
+            for(j=w; j<(w_base + X_tile_width); j+=TILE_WIDTH)
+                if((i<H) && (j<W))
+                    // X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_4d(n,c,i,j,C,H,W)];
+                    X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_4d(n,i,j,c,H,W,C)];
+        __syncthreads();
+
+        // convolution
+        for(p=0; p<K; p++)
+            for(q=0; q<K; q++)
+                if((h+p<H)&&(w+q<W))
+                    acc += X_shared[global_id_2d(h0+p,w0+q,X_tile_width)] * Mask_shared[global_id_2d(p,q,K)];
+        __syncthreads();
+    }
+    Y[global_id_4d(n, h, w, m, h_y, w_y, M)] = acc;
+}
+
+
 /***********************************************************************************************/
 
 // convolutional layer forward functions for only one sample
