@@ -390,9 +390,8 @@ __global__ void convLayer_forward_naive_sample(
         // convolution
         for(p=0; p<K; p++)          // y-direction
             for(q=0; q<K; q++){      // x-direction
-                int gid_x = global_id_4d(n, h+p, w+q, c, H, W, C);
-                int gid_m = global_id_4d(p, q, c, m, K, C, M);
-                acc += X[gid_x] * Masks[gid_m];
+                if((h+p)<H && (w+q<W))
+                    acc += X[global_id_3d(c,h+p,w+q,H,W)] * Masks[global_id_4d(m,c,)];
             }
     int gid_y = global_id_4d(n, h, w, m, h_y, w_y, M);
     Y[gid_y] = acc;
