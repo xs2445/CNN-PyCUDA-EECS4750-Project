@@ -1,9 +1,16 @@
 #include <stdio.h>
 
+/***********************************************************************************************/
+
 //Some pre-defined arguments
+
 #define TILE_WIDTH 32
 
-// functions for global id calculating
+
+/***********************************************************************************************/
+
+// functions for global id calculating (row-major format)
+
 /**
  * @brief calculate the global id of coordinate (n1,n2) in linearized 2-dimensional 
  * matrix based on row-major layout
@@ -16,7 +23,6 @@ __device__ int global_id_2d(int n1, int n2, int N2){
     return n2 + N2*n1;
 }
 
-// functions for global id calculating
 /**
  * @brief calculate the global id of coordinate (n1,n2,n3) in linearized 3-dimensional 
  * matrix based on row-major layout
@@ -49,6 +55,10 @@ __device__ int global_id_4d(int n1, int n2, int n3, int n4, int N2, int N3, int 
     return n4 + N4*(n3 + N3*(n2 + N2*n1));
 }
 
+
+/***********************************************************************************************/
+
+// naive forward convolutional layer functions using global memory for N samples
 
 /**
  * @brief Naive parallel convolution layer without using shared or constant memory. 
@@ -158,6 +168,10 @@ __global__ void convLayer_forward_naive_channel(
 }
 
 
+/***********************************************************************************************/
+
+// convolutional layer forward function using shared memory and coalesce copy for N samples
+
 /**
  * @brief parallel convolution layer using shared memory. 
  * mode = valid, stride = 1, mask_width = K.
@@ -224,9 +238,7 @@ __global__ void convLayer_forward_shared(
         // here h0 = threadIdx.x, w0 = threadIdx.y
         if((h0<K) && (w0<K))
             Mask_shared[global_id_2d(h0,w0,K)] = Masks[global_id_4d(m,c,h0,w0,C,K,K)];
-            
         __syncthreads();
-        // printf("%d\n",Mask_shared );
 
         // copy tiled X to the shared memory
         for(i=h; i<(h_base + X_tile_width); i+=TILE_WIDTH)
@@ -239,8 +251,61 @@ __global__ void convLayer_forward_shared(
         for(p=0; p<K; p++)
             for(q=0; q<K; q++)
                 if((h+p<H)&&(w+q<W))
-                    acc += X_shared[global_id_2d(h+p,w+q,X_tile_width)] * Mask_shared[global_id_2d(p,q,K)];
+                    acc += X_shared[global_id_2d(h0+p,w0+q,X_tile_width)] * Mask_shared[global_id_2d(p,q,K)];
         __syncthreads();
     }
     Y[global_id_4d(n, m, h, w, M, h_y, w_y)] = acc;
+}
+
+
+/***********************************************************************************************/
+
+// convolutional layer forward functions for only one sample
+
+/**
+ * @brief Naive parallel convolution layer for only 1 samlpe without using shared or constant memory. 
+ * mode = valid, stride = 1, mask_width = K.
+ * @param X input matrix with size [C, H, W]
+ * @param Masks masks with size [M, C, K, K]
+ * @param Y output matrix with size [M, H-K+1, W-K+1]
+ * @param C number of channels of input matrix
+ * @param M number of channels of output matrix
+ * @param H height of input matrix
+ * @param W width of input matrix
+ * @param K width of masks 
+ * @param W_grid the number of tiled matrix in width direction
+ * @return Convolution result filled in Y
+**/
+__global__ void convLayer_forward_naive_sample(
+    float *X, 
+    float *Masks, 
+    float *Y, 
+    const int C, 
+    const int M, 
+    const int H, 
+    const int W, 
+    const int K){
+
+    // output shape of Y
+    const int h_y = H-K+1;
+    const int w_y = W-K+1; 
+
+    // initialize some parameters
+    int c, p, q;
+    const int m = blockIdx.z;
+    const int h = blockIdx.y * blockDim.y + threadIdx.y;
+    const int w = blockIdx.x * blockDim.x + threadIdx.x;
+
+    float acc = 0;
+    // for each input channel
+    for(c=0; c<C; c++)
+        // convolution
+        for(p=0; p<K; p++)          // y-direction
+            for(q=0; q<K; q++){      // x-direction
+                int gid_x = global_id_4d(n, h+p, w+q, c, H, W, C);
+                int gid_m = global_id_4d(p, q, c, m, K, C, M);
+                acc += X[gid_x] * Masks[gid_m];
+            }
+    int gid_y = global_id_4d(n, h, w, m, h_y, w_y, M);
+    Y[gid_y] = acc;
 }
