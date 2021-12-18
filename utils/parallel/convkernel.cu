@@ -28,8 +28,8 @@ __device__ int global_id_2d(int n1, int n2, int N2){
  * @return global id of (n1,n2,n3)
 **/
 __device__ int global_id_3d(int n1, int n2, int n3, int N2, int N3){
-    return n3 + N3*global_id_2d(n1,n2,N2);
-    //return n3 + N3*(n2 + N2*n1);
+    //return n3 + N3*global_id_2d(n1,n2,N2);
+    return n3 + N3*(n2 + N2*n1);
 }
 
 /**
@@ -45,8 +45,8 @@ __device__ int global_id_3d(int n1, int n2, int n3, int N2, int N3){
  * @return global id of (n1,n2,n3,n4)
 **/
 __device__ int global_id_4d(int n1, int n2, int n3, int n4, int N2, int N3, int N4){
-    return n4 + N4*global_id_3d(n1,n2,n3,N2,N3);
-    //return n4 + N4*(n3 + N3*(n2 + N2*n1));
+    //return n4 + N4*global_id_3d(n1,n2,n3,N2,N3);
+    return n4 + N4*(n3 + N3*(n2 + N2*n1));
 }
 
 
@@ -177,6 +177,7 @@ __global__ void convLayer_forward_shared(
     float *X, 
     float *Masks, 
     float *Y, 
+    const int N,
     const int C, 
     const int M, 
     const int H, 
@@ -187,16 +188,15 @@ __global__ void convLayer_forward_shared(
     // the size to be tiled for X matrix
     const int X_tile_width = TILE_WIDTH + K - 1;
     // allocate shared memory, shared memory size defined when invoking the kernel
-    // extern __shared__ float shmem[];
-    __shared__ float shmem[1321];
+    extern __shared__ float shmem[];
+
     // first part of shared memory is tile of X, 
     // X_tile has size X_tile_width*X_tile_width
     float *X_shared = &shmem[0];
+
     // second part of shared memory is part of the mask
     // has size K*K
-    // float *Mask_shared = &shmem[X_tile_width*X_tile_width];
-    float *Mask_shared = &shmem[1296];
-    // Mask_shared[24] = 1;
+    float *Mask_shared = &shmem[X_tile_width*X_tile_width];
 
     // output shape of Y
     const int h_y = H-K+1;
@@ -213,7 +213,6 @@ __global__ void convLayer_forward_shared(
     const int h = h_base + h0;
     const int w = w_base + w0;
 
-
     float acc = 0;
 
     int c, i, j, p, q;
@@ -225,19 +224,22 @@ __global__ void convLayer_forward_shared(
         // here h0 = threadIdx.x, w0 = threadIdx.y
         if((h0<K) && (w0<K))
             Mask_shared[global_id_2d(h0,w0,K)] = Masks[global_id_4d(m,c,h0,w0,C,K,K)];
+            
         __syncthreads();
+        // printf("%d\n",Mask_shared );
 
         // copy tiled X to the shared memory
         for(i=h; i<(h_base + X_tile_width); i+=TILE_WIDTH)
             for(j=w; j<(w_base + X_tile_width); j+=TILE_WIDTH)
-                if(i<H && j<W)
+                if((i<H) && (j<W))
                     X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_4d(n,c,i,j,C,H,W)];
         __syncthreads();
 
         // convolution
         for(p=0; p<K; p++)
             for(q=0; q<K; q++)
-                acc += X_shared[h+p,w+q] * Mask_shared[p,q];
+                if((h+p<H)&&(w+q<W))
+                    acc += X_shared[global_id_2d(h+p,w+q,X_tile_width)] * Mask_shared[global_id_2d(p,q,K)];
         __syncthreads();
     }
     Y[global_id_4d(n, m, h, w, M, h_y, w_y)] = acc;

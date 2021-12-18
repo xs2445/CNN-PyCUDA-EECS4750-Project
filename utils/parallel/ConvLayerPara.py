@@ -154,14 +154,20 @@ class ConvLayerP:
 
         X_d = gpuarray.to_gpu(X)
         Masks_d = gpuarray.to_gpu(Masks)
+
+        # Masks_d = cuda.mem_alloc_like(Masks)
+        # # copy matrics to device
+        # cuda.memcpy_htod(Masks_d, Masks)
+
+
         w_y = W-K+1
         h_y = H-K+1
         Y_d = gpuarray.zeros((N, M,h_y,w_y), dtype=dtype)
 
         
         BlockDim = (self.TILE_WIDTH, self.TILE_WIDTH, 1)
-        w_grid = w_y//self.TILE_WIDTH+1
-        h_grid = h_y//self.TILE_WIDTH+1
+        w_grid = w_y//self.TILE_WIDTH + 1
+        h_grid = h_y//self.TILE_WIDTH + 1
         Num_tiles = w_grid * h_grid
 
         print('Block: ', BlockDim)
