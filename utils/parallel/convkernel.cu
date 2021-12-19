@@ -102,12 +102,11 @@ __global__ void convLayer_forward_naive(
 
     float acc = 0;
     // for each input channel
-    for(c=0; c<C; c++)
-        // convolution
+    for(c=0; c<C; c++)          // convolution
         for(p=0; p<K; p++)          // y-direction
             for(q=0; q<K; q++)
-                if((h+p)<H && (w+q<W))       // x-direction
-                acc += X[global_id_4d(n, c, h+p, w+q, C, H, W)] * Masks[global_id_4d(m, c, p, q, C, K, K)];
+                if((h+p<H) && (w+q<W))       // x-direction
+                    acc += X[global_id_4d(n, c, h+p, w+q, C, H, W)] * Masks[global_id_4d(m, c, p, q, C, K, K)];
 
     Y[global_id_4d(n, m, h, w, M, h_y, w_y)] = acc;
 }
@@ -153,11 +152,10 @@ __global__ void convLayer_forward_naive_channel(
 
     float acc = 0;
     // for each input channel
-    for(c=0; c<C; c++)
-        // convolution
+    for(c=0; c<C; c++)          // convolution
         for(p=0; p<K; p++)          // y-direction
             for(q=0; q<K; q++)
-                if((h+p)<H && (w+q<W))     // x-direction
+                if((h+p<H) && (w+q<W))     // x-direction
                     acc += X[global_id_4d(n, h+p, w+q, c, H, W, C)] * Masks[global_id_4d(p, q, c, m, K, C, M)];
 
     Y[global_id_4d(n, h, w, m, h_y, w_y, M)] = acc;

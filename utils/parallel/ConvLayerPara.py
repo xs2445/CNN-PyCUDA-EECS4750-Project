@@ -12,7 +12,7 @@ class ConvLayerP:
         # Attributes for instance of EncoderDecoder module
         # """
         self.mod = None
-        self.path_kernel = "convkernel.cu"
+        self.path_kernel = "utils/parallel/convkernel.cu"
         self.getSourceModule()
         self.TILE_WIDTH = 32
 
