@@ -442,7 +442,19 @@ __global__ void convLayer_forward_sample_naive_channel(
 
 // convolutional layer forward functions for only one sample using shared memory
 
-
+/**
+ * @brief Parallel convolution layer for only 1 samlpe using shared memory. 
+ * mode = valid, stride = 1, mask_width = K.
+ * @param X input matrix with size [C, H, W]
+ * @param Masks masks with size [M, C, K, K]
+ * @param Y output matrix with size [M, H-K+1, W-K+1]
+ * @param C number of channels of input matrix
+ * @param M number of channels of output matrix
+ * @param H height of input matrix
+ * @param W width of input matrix
+ * @param K width of masks 
+ * @return Convolution result filled in Y
+**/
 __global__ void convLayer_forward_sample_shared(
     float *X, 
     float *Masks, 

@@ -3,6 +3,7 @@ import pycuda.autoinit
 from pycuda.compiler import SourceModule
 import pycuda.driver as cuda
 import pycuda.gpuarray as gpuarray
+import time
 
 
 class ConvLayerP:
@@ -54,6 +55,10 @@ class ConvLayerP:
         Y: output matrix with size [N, M, H-K+1, W-K+1] (NCHW format)
         """
 
+        start = cuda.Event()
+        end = cuda.Event()
+        start.record()
+
         X_d = gpuarray.to_gpu(X)
         Masks_d = gpuarray.to_gpu(Masks)
         w_y = W-K+1
@@ -78,7 +83,11 @@ class ConvLayerP:
         
         Y = Y_d.get()
 
-        return Y
+        
+        end.record()
+        end.synchronize()
+
+        return Y, start.time_till(end)
 
 
     def forward_shared(self, X, Masks, N, C, M, H, W, K, format='NCHW', dtype=np.float32):
@@ -109,6 +118,10 @@ class ConvLayerP:
         -------
         Y: output matrix with size [N, M, H-K+1, W-K+1]
         """
+
+        start = cuda.Event()
+        end = cuda.Event()
+        start.record()
 
         # copy X and Masks to the device
         X_d = gpuarray.to_gpu(X)
@@ -157,7 +170,11 @@ class ConvLayerP:
         
         Y = Y_d.get()
 
-        return Y
+        
+        end.record()
+        end.synchronize()
+
+        return Y, start.time_till(end)
 
 
     def forward_sample_naive(self, X, Masks, C, M, H, W, K, format='CHW', dtype=np.float32):
@@ -187,6 +204,10 @@ class ConvLayerP:
         -------
         Y: output matrix with size [M, H-K+1, W-K+1]
         """
+
+        start = cuda.Event()
+        end = cuda.Event()
+        start.record()
 
         X_d = gpuarray.to_gpu(X)
         Masks_d = gpuarray.to_gpu(Masks)
@@ -219,7 +240,11 @@ class ConvLayerP:
         
         Y = Y_d.get()
 
-        return Y
+        
+        end.record()
+        end.synchronize()
+
+        return Y, start.time_till(end)
 
 
     def forward_sample_shared(self, X, Masks, C, M, H, W, K, format='CHW', dtype=np.float32):
@@ -249,6 +274,10 @@ class ConvLayerP:
         -------
         Y: output matrix with size [M, H-K+1, W-K+1]
         """
+
+        start = cuda.Event()
+        end = cuda.Event()
+        start.record()
 
         X_d = gpuarray.to_gpu(X)
         Masks_d = gpuarray.to_gpu(Masks)
@@ -288,8 +317,11 @@ class ConvLayerP:
             shared=shm_space)
         
         Y = Y_d.get()
+        
+        end.record()
+        end.synchronize()
 
-        return Y
+        return Y, start.time_till(end)
 
 
     def forward_serial(self, X, Masks, N, C, M, H, W, K, format='NCHW', dtype=np.float32):
@@ -320,6 +352,8 @@ class ConvLayerP:
         -------
         Y: output matrix with size [N, M, H-K+1, W-K+1]
         """
+
+        start = time.time()
 
         out_height = H-K+1
         out_width = W-K+1
@@ -365,4 +399,4 @@ class ConvLayerP:
         else: 
             assert ValueError('The format should be NCHW or NHWC!')   
             
-        return out
+        return out, (time.time()-start)*1e3
