@@ -89,6 +89,7 @@ class Conv2d(Layer):
         return out
 
     def backword(self, d_top):
+        pass
         
 
 

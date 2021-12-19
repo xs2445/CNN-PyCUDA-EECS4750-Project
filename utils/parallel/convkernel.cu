@@ -105,13 +105,11 @@ __global__ void convLayer_forward_naive(
     for(c=0; c<C; c++)
         // convolution
         for(p=0; p<K; p++)          // y-direction
-            for(q=0; q<K; q++){      // x-direction
-                int gid_x = global_id_4d(n, c, h+p, w+q, C, H, W);
-                int gid_m = global_id_4d(m, c, p, q, C, K, K);
-                acc += X[gid_x] * Masks[gid_m];
-            }
-    int gid_y = global_id_4d(n, m, h, w, M, h_y, w_y);
-    Y[gid_y] = acc;
+            for(q=0; q<K; q++)
+                if((h+p)<H && (w+q<W))       // x-direction
+                acc += X[global_id_4d(n, c, h+p, w+q, C, H, W)] * Masks[global_id_4d(m, c, p, q, C, K, K)];
+
+    Y[global_id_4d(n, m, h, w, M, h_y, w_y)] = acc;
 }
 
 
@@ -158,13 +156,11 @@ __global__ void convLayer_forward_naive_channel(
     for(c=0; c<C; c++)
         // convolution
         for(p=0; p<K; p++)          // y-direction
-            for(q=0; q<K; q++){      // x-direction
-                int gid_x = global_id_4d(n, h+p, w+q, c, H, W, C);
-                int gid_m = global_id_4d(p, q, c, m, K, C, M);
-                acc += X[gid_x] * Masks[gid_m];
-            }
-    int gid_y = global_id_4d(n, h, w, m, h_y, w_y, M);
-    Y[gid_y] = acc;
+            for(q=0; q<K; q++)
+                if((h+p)<H && (w+q<W))     // x-direction
+                    acc += X[global_id_4d(n, h+p, w+q, c, H, W, C)] * Masks[global_id_4d(p, q, c, m, K, C, M)];
+
+    Y[global_id_4d(n, h, w, m, h_y, w_y, M)] = acc;
 }
 
 
@@ -348,7 +344,7 @@ __global__ void convLayer_forward_shared_channel(
 
 /***********************************************************************************************/
 
-// convolutional layer forward functions for only one sample
+// convolutional layer naive forward functions for only one sample
 
 /**
  * @brief Naive parallel convolution layer for only 1 samlpe without using shared or constant memory. 
@@ -364,7 +360,7 @@ __global__ void convLayer_forward_shared_channel(
  * @param W_grid the number of tiled matrix in width direction
  * @return Convolution result filled in Y
 **/
-__global__ void convLayer_forward_naive_sample(
+__global__ void convLayer_forward_sample_naive(
     float *X, 
     float *Masks, 
     float *Y, 
@@ -386,13 +382,127 @@ __global__ void convLayer_forward_naive_sample(
 
     float acc = 0;
     // for each input channel
-    for(c=0; c<C; c++)
+    for(c=0; c<C; c++)               // convolution
+        for(p=0; p<K; p++)           // y-direction
+            for(q=0; q<K; q++)       // x-direction
+                if((h+p)<H && (w+q<W))
+                    acc += X[global_id_3d(h+p,w+q,c,W,C)] * Masks[global_id_4d(p,q,c,m,K,C,M)];
+
+    Y[global_id_3d(m, h, w, h_y, w_y)] = acc;
+}
+
+
+/**
+ * @brief Naive parallel convolution layer for only 1 samlpe without using shared or constant memory. 
+ * mode = valid, stride = 1, mask_width = K.
+ * @param X input matrix with size [H, W, C]
+ * @param Masks masks with size [K, K, C, M]
+ * @param Y output matrix with size [H-K+1, W-K+1, M]
+ * @param C number of channels of input matrix
+ * @param M number of channels of output matrix
+ * @param H height of input matrix
+ * @param W width of input matrix
+ * @param K width of masks 
+ * @param W_grid the number of tiled matrix in width direction
+ * @return Convolution result filled in Y
+**/
+__global__ void convLayer_forward_sample_naive_channel(
+    float *X, 
+    float *Masks, 
+    float *Y, 
+    const int C, 
+    const int M, 
+    const int H, 
+    const int W, 
+    const int K){
+
+    // output shape of Y
+    const int h_y = H-K+1;
+    const int w_y = W-K+1; 
+
+    // initialize some parameters
+    int c, p, q;
+    const int m = blockIdx.z;
+    const int h = blockIdx.y * blockDim.y + threadIdx.y;
+    const int w = blockIdx.x * blockDim.x + threadIdx.x;
+
+    float acc = 0;
+    // for each input channel
+    for(c=0; c<C; c++) 
+        for(p=0; p<K; p++)          // y-direction
+            for(q=0; q<K; q++)      // x-direction
+                if((h+p)<H && (w+q<W))
+                    acc += X[global_id_3d(h+p,w+q,c,W,C)] * Masks[global_id_4d(p,q,c,m,K,C,M)];
+
+    Y[global_id_3d(h, w, m, w_y, M)] = acc;
+}
+
+
+/***********************************************************************************************/
+
+// convolutional layer forward functions for only one sample using shared memory
+
+
+__global__ void convLayer_forward_sample_shared(
+    float *X, 
+    float *Masks, 
+    float *Y, 
+    const int C, 
+    const int M, 
+    const int H, 
+    const int W, 
+    const int K){
+
+    const int X_tile_width = TILE_WIDTH + K - 1;
+    // allocate shared memory, shared memory size defined when invoking the kernel
+    extern __shared__ float shmem[];
+
+    // first part of shared memory is tile of X, 
+    // X_tile has size X_tile_width*X_tile_width
+    float *X_shared = &shmem[0];
+
+    // second part of shared memory is part of the mask
+    // has size K*K
+    float *Mask_shared = &shmem[X_tile_width*X_tile_width];
+
+    // output shape of Y
+    const int h_y = H-K+1;
+    const int w_y = W-K+1; 
+
+    // initialize some parameters
+    const int m = blockIdx.z;
+    const int h0 = threadIdx.y;
+    const int w0 = threadIdx.x;
+    const int h_base = blockIdx.y * blockDim.y;
+    const int w_base = blockIdx.x * blockDim.x;
+    const int h = h_base + h0;
+    const int w = w_base + w0;
+
+    float acc = 0;
+    // for each input channel
+
+    int c, i, j, p, q;    
+
+    for(c=0; c<C; c++){
+
+        if((h<K) && (w<K))
+            Mask_shared[global_id_2d(h,w,K)] = Masks[global_id_4d(m,c,h,w,C,K,K)];
+        __syncthreads();
+
+
+        // copy tiled X to the shared memory
+        for(i=h; i<(h_base + X_tile_width); i+=TILE_WIDTH)
+            for(j=w; j<(w_base + X_tile_width); j+=TILE_WIDTH)
+                if((i<H) && (j<W))
+                    X_shared[global_id_2d(i-h_base,j-w_base,X_tile_width)] = X[global_id_3d(c,i,j,H,W)];
+        __syncthreads();
+
         // convolution
         for(p=0; p<K; p++)          // y-direction
-            for(q=0; q<K; q++){      // x-direction
+            for(q=0; q<K; q++)      // x-direction
                 if((h+p)<H && (w+q<W))
-                    acc += X[global_id_3d(c,h+p,w+q,H,W)] * Masks[global_id_4d(m,c,)];
-            }
-    int gid_y = global_id_4d(n, h, w, m, h_y, w_y, M);
-    Y[gid_y] = acc;
+                    acc += X_shared[global_id_2d(h0+p,w0+q,X_tile_width)] * Mask_shared[global_id_2d(p,q,K)];
+    }
+
+    Y[global_id_3d(m, h, w, h_y, w_y)] = acc;
 }
